@@ -37,6 +37,7 @@
                     .then(reg => console.log('Service worker registered!'))
                     .catch(err => console.log('Service worker error:' + err));
                 // Startup functions.
+                loadSaveSettingsFromIndexedDB(false);
             });
         }
     </script>
@@ -49,7 +50,7 @@
         <!--Header-->
         <div class="card bg-dark text-white">
             <div class="card-header">
-                FST Decoder v0.0.1
+                FST Decoder v0.0.2
             </div>
         </div>
         <!--Busy-->
@@ -74,6 +75,109 @@
                     <label id="lblError">N/A</label>
                 </div>
             </div>
+            <!--Settings-->
+            <div class="card">
+                <div class="card-header">
+                    <a class="btn btn-secondary" data-bs-toggle="collapse" href="#collapseSettings">
+                        Settings
+                    </a>
+                </div>
+                <div id="collapseSettings" class="collapse">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-2">
+                                <label class="control-label" for="selectSettingPressureUnit">Pressure unit:</label>
+                            </div>
+                            <div class="col-md-3">
+                                <select name="selectSettingPressureUnit" id="selectSettingPressureUnit"
+                                    class="form-select fw-bold">
+                                    <option selected value="0">psi(A)</option>
+                                    <option value="1">kPa(A)</option>
+                                    <option value="2">atm(A)</option>
+                                    <option value="3">at(A)</option>
+                                    <option value="4">mBar(A)</option>
+                                    <option value="5">bar(A)</option>
+                                    <option value="6">torr(A)</option>
+                                    <option value="7">kg/cm²(A)</option>
+                                    <option value="8">psi(G)</option>
+                                    <option value="9">kPa(G)</option>
+                                    <option value="10">atm(G)</option>
+                                    <option value="11">at(G)</option>
+                                    <option value="12">mBar(G)</option>
+                                    <option value="13">bar(G)</option>
+                                    <option value="14">torr(G)</option>
+                                    <option value="15">kg/cm²(G)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <label class="control-label" for="selectSettingTemperatureUnit">Temperature
+                                    unit:</label>
+                            </div>
+                            <div class="col-md-3">
+                                <select name="selectSettingTemperatureUnit" id="selectSettingTemperatureUnit"
+                                    class="form-select fw-bold">
+                                    <option selected value="0">°C</option>
+                                    <option value="1">°F</option>
+                                    <option value="2">°K</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <label class="control-label" for="selectSettingColumnSeperator">Column
+                                    seperator:</label>
+                            </div>
+                            <div class="col-md-3">
+                                <select name="selectSettingColumnSeperator" id="selectSettingColumnSeperator"
+                                    class="form-select fw-bold">
+                                    <option selected value=",">Comma(,)</option>
+                                    <option value=" ">Space( )</option>
+                                    <option value=";">Semicolon(;)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <label class="control-label" for="selectSettingElapsedTimeFormat">Elapsed time
+                                    format:</label>
+                            </div>
+                            <div class="col-md-3">
+                                <select name="selectSettingElapsedTimeFormat" id="selectSettingElapsedTimeFormat"
+                                    class="form-select fw-bold">
+                                    <option value="1">MilliSeconds</option>
+                                    <option value="1000">Seconds</option>
+                                    <option selected value="3600000">Hours</option>
+                                    <option value="86400000">Days</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <label class="control-label" for="textSettingPressureDecimal">Pressure Decimal: </label>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" class="form-control fw-bold" id="textSettingPressureDecimal"
+                                    name="textSettingPressureDecimal" min="0" value="3">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <label class="control-label" for="textSettingTemperatureDecimal">Temperature Decimal:
+                                </label>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" class="form-control fw-bold" id="textSettingTemperatureDecimal"
+                                    name="textSettingTemperatureDecimal" min="0" value="2">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button type="button" id="btnSaveSettings" class="btn btn-info">Save</button>
+                    </div>
+                </div>
+            </div>
             <!--Convert-->
             <div class="card">
                 <div class="card-header">
@@ -85,7 +189,7 @@
                     <div class="card-body">
                         <div class="input-group mb-3">
                             <input type="file" class="form-control" id="fileOpenJob" aria-describedby=""
-                                aria-label="Upload" accept=".FST">
+                                aria-label="Upload" accept=".fst, .kc3">
                         </div>
                     </div>
                     <div class="card-footer">
@@ -102,21 +206,20 @@
         //#region Layout definitions and functions.
 
         let divBusy = document.querySelector('#divBusy');
+        let lblProgress = document.querySelector('#lblProgress');
         let divProgressBar = document.querySelector('#divProgressBar');
         let progressBar = document.querySelector('#progressBar');
         let divNotBusy = document.querySelector('#divNotBusy');
         let divError = document.querySelector('#divError');
-        let btnConvert = document.querySelector('#btnConvert');
-        let btnCreate = document.querySelector('#btnCreate');
-        let lblProgress = document.querySelector('#lblProgress');
         let lblError = document.querySelector('#lblError');
-
-        btnConvert.addEventListener('click', async function (event) {
-            event.stopPropagation();
-            event.preventDefault();
-
-            await performConvert();
-        });
+        const selectSettingPressureUnit = document.querySelector('#selectSettingPressureUnit');
+        const selectSettingTemperatureUnit = document.querySelector('#selectSettingTemperatureUnit');
+        const selectSettingColumnSeperator = document.querySelector('#selectSettingColumnSeperator');
+        const selectSettingElapsedTimeFormat = document.querySelector('#selectSettingElapsedTimeFormat');
+        let textSettingPressureDecimal = document.querySelector('#textSettingPressureDecimal');
+        let textSettingTemperatureDecimal = document.querySelector('#textSettingTemperatureDecimal');
+        let btnSaveSettings = document.querySelector('#btnSaveSettings');
+        let btnConvert = document.querySelector('#btnConvert');
 
         function divBusyShow(enable, showProgress) {
             if (enable) {
@@ -151,10 +254,407 @@
             lblError.innerHTML += value;
         }
 
+        btnSaveSettings.addEventListener('click', async function (event) {
+            event.stopPropagation();
+            event.preventDefault();
+
+            await loadSaveSettingsFromIndexedDB(true);
+        });
+        btnConvert.addEventListener('click', async function (event) {
+            event.stopPropagation();
+            event.preventDefault();
+
+            await onButtonConvert();
+        });
+
+        function loadSaveSettingsFromIndexedDB(isSave) {
+            try {
+                let openRequest = indexedDB.open("SettingsDB", 1);
+
+                openRequest.onupgradeneeded = function (event) {
+                    let db = openRequest.result;
+                    switch (event.oldVersion) {
+                        case 0:
+                            let store = db.createObjectStore("settings", { keyPath: "id" });
+                            let index = store.createIndex("SettingIndex", "value");
+                            break;
+                        default:
+                            break;
+                    }
+                };
+
+                openRequest.onsuccess = function () {
+                    let db = openRequest.result;
+                    let tx = db.transaction("settings", "readwrite");
+                    let store = tx.objectStore("settings");
+                    let index = store.index("SettingIndex");
+
+                    if (isSave) {
+                        store.put({ id: "PressureUnit", value: selectSettingPressureUnit.value });
+                        store.put({ id: "TemperatureUnit", value: selectSettingTemperatureUnit.value });
+                        store.put({ id: "ColumnSeperator", value: selectSettingColumnSeperator.value });
+                        store.put({ id: "ElapsedTimeFormat", value: selectSettingElapsedTimeFormat.value });
+                        store.put({ id: "PressureDecimal", value: textSettingPressureDecimal.value });
+                        store.put({ id: "TemperatureDecimal", value: textSettingTemperatureDecimal.value });
+                    } else {
+                        let getPressureUnit = store.get("PressureUnit");
+                        let getTemperatureUnit = store.get("TemperatureUnit");
+                        let getColumnSeperator = store.get("ColumnSeperator");
+                        let getElapsedTimeFormat = store.get("ElapsedTimeFormat");
+                        let getPressureDecimal = store.get("PressureDecimal");
+                        let getTemperatureDecimal = store.get("TemperatureDecimal");
+
+                        getPressureUnit.onsuccess = function () {
+                            try {
+                                selectSettingPressureUnit.value = getPressureUnit.result.value;
+                            } catch {
+                                selectSettingPressureUnit.value = 0;
+                            }
+                        };
+                        getTemperatureUnit.onsuccess = function () {
+                            try {
+                                selectSettingTemperatureUnit.value = getTemperatureUnit.result.value;
+                            } catch {
+                                selectSettingTemperatureUnit.value = 0;
+                            }
+                        };
+                        getColumnSeperator.onsuccess = function () {
+                            try {
+                                selectSettingColumnSeperator.value = getColumnSeperator.result.value;
+                            } catch {
+                                selectSettingColumnSeperator.value = ",";
+                            }
+                        };
+                        getElapsedTimeFormat.onsuccess = function () {
+                            try {
+                                selectSettingElapsedTimeFormat.value = getElapsedTimeFormat.result.value;
+                            } catch {
+                                selectSettingElapsedTimeFormat.value = "3600000";
+                            }
+                        };
+                        getPressureDecimal.onsuccess = function () {
+                            try {
+                                textSettingPressureDecimal.value = getPressureDecimal.result.value;
+                            } catch {
+                                textSettingPressureDecimal.value = 3;
+                            }
+                        };
+                        getTemperatureDecimal.onsuccess = function () {
+                            try {
+                                textSettingTemperatureDecimal.value = getTemperatureDecimal.result.value;
+                            } catch {
+                                textSettingTemperatureDecimal.value = 2;
+                            }
+                        };
+
+                    }
+
+                    tx.oncomplete = function () {
+                        db.close();
+                        if (isSave) {
+                            log('> Settings saved!');
+                            // alert("Settings saved! :)");
+                        } else {
+                            log('> Settings loaded!');
+                        }
+                    };
+                }
+            } catch (error) {
+                log('> Error -> loadSaveSettingsFromIndexedDB: ' + error);
+            }
+        }
+
+        async function onButtonConvert() {
+            try {
+                const jobFile = document.getElementById('fileOpenJob').files[0];
+                const contents = await jobFile.arrayBuffer();
+
+                downloadData = new Uint8Array(contents);
+                fileDownloadName = jobFile.name;
+                if (downloadData !== null) {
+                    if (fileDownloadName.endsWith('.KC3') || fileDownloadName.endsWith('.FST')) {
+                        parseExportJob(downloadData);
+                    }
+                }
+            } catch (error) {
+                log('> Error: onButtonConvert -> ' + error);
+            }
+        }
+
         //#endregion Layout definitions and functions.
 
         //#region Code.
+
         const FILE_HEADER_SIZE = 2048;
+        let downloadData = null;
+        let fileUploadName = null;
+        let jobConfigData = {
+            gaugeSN: "",
+            selectedHW: "",
+            fixedRate: 30,
+            pressTrigStart: 30,
+            pressTrigStop: 0,
+            createJob: 0,
+            varRate: [],
+            varDur: [],
+            calibID: "",
+            calibPressCoeff: [],
+            calibTempCoeff: [],
+            calibDate: "",
+            calibMaxPress: 0,
+            calibMinPress: 0,
+            calibMaxTemp: 0,
+            calibMinTemp: 0,
+            calibPressOffset: 0,
+            calibTempOffset: 0,
+            calibPressCountOffset: 0,
+            calibTempCountOffset: 0,
+            calibPressScaling: 0,
+            calibTempScaling: 0,
+        };
+
+        function parseExportJob(value) {
+            try {
+
+                //#region Parse header.
+                jobConfigData.gaugeSN = String.fromCharCode.apply(null, value.slice(38, 41));
+                jobConfigData.selectedHW = String.fromCharCode.apply(null, value.slice(64, 69));
+                jobConfigData.fixedRate = parseInt(String.fromCharCode.apply(null, value.slice(199, 204)));
+                jobConfigData.pressTrigStart = parseInt(String.fromCharCode.apply(null, value.slice(231, 236)));
+                jobConfigData.pressTrigStop = parseInt(String.fromCharCode.apply(null, value.slice(262, 267)));
+                jobConfigData.createJob = parseInt(String.fromCharCode.apply(null, value.slice(282, 283)));
+                for (let i = 0; i < 10; i++) {
+                    jobConfigData.varRate.push(parseInt(String.fromCharCode.apply(null, value.slice(326 + (i * 16), 331 + (i * 16)))));
+                    jobConfigData.varDur.push(parseInt(String.fromCharCode.apply(null, value.slice(333 + (i * 16), 340 + (i * 16)))));
+                }
+                jobConfigData.calibID = String.fromCharCode.apply(null, value.slice(519, 525));
+                for (let i = 0; i < 15; i++) {
+                    jobConfigData.calibPressCoeff.push(parseFloat(String.fromCharCode.apply(null, value.slice(545 + (i * 33), 558 + (i * 33)))));
+                }
+                for (let i = 0; i < 10; i++) {
+                    jobConfigData.calibTempCoeff.push(parseFloat(String.fromCharCode.apply(null, value.slice(1038 + (i * 31), 1051 + (i * 31)))));
+                }
+                jobConfigData.calibDate = String.fromCharCode.apply(null, value.slice(1345, 1355));
+                jobConfigData.calibMaxPress = parseFloat(String.fromCharCode.apply(null, value.slice(1372, 1377)));
+                jobConfigData.calibMinPress = parseFloat(String.fromCharCode.apply(null, value.slice(1394, 1399)));
+                jobConfigData.calibMaxTemp = parseFloat(String.fromCharCode.apply(null, value.slice(1419, 1423)));
+                jobConfigData.calibMinTemp = parseFloat(String.fromCharCode.apply(null, value.slice(1443, 1447)));
+                jobConfigData.calibPressOffset = parseFloat(String.fromCharCode.apply(null, value.slice(1467, 1480)));
+                jobConfigData.calibTempOffset = parseFloat(String.fromCharCode.apply(null, value.slice(1503, 1516)));
+                jobConfigData.calibPressCountOffset = parseFloat(String.fromCharCode.apply(null, value.slice(1542, 1555)));
+                jobConfigData.calibTempCountOffset = parseFloat(String.fromCharCode.apply(null, value.slice(1584, 1597)));
+                jobConfigData.calibPressScaling = parseFloat(String.fromCharCode.apply(null, value.slice(1618, 1631)));
+                jobConfigData.calibTempScaling = parseFloat(String.fromCharCode.apply(null, value.slice(1655, 1668)));
+                //#endregion Parse header.
+
+                //#region Error checking.
+                if (value.length < (FILE_HEADER_SIZE + 16)) {
+                    throw ('No datapoints in job.');
+                }
+                if (!jobConfigData.selectedHW.startsWith('P')) {
+                    throw ('Unknown transducer type.');
+                }
+                //#endregion Error checking.
+
+                //#region Parse job data.
+                let jobData = [];
+                let curDateTime = new Date();
+                let timeSet = false;
+                for (let i = (FILE_HEADER_SIZE); i < value.length; i += 8) {
+                    switch (value[i + 7] % 16) {
+                        case 10: // Normal sample
+                        case 11: // RTC invalid sample
+                            {
+                                let timeMs = curDateTime.getTime();
+                                let rawPress = value[i] * 256 * 256 + value[i + 1] * 256 + value[i + 2];
+                                let rawTemp = value[i + 4] * 256 * 256 + value[i + 5] * 256 + value[i + 6];
+                                let pressValue = calibratePressure(rawPress, rawTemp);
+                                let tempValue = calibrateTemperateure(rawPress, rawTemp);
+
+                                jobData.push({ timeMs, pressValue, tempValue });
+                                timeMs += (jobConfigData.fixedRate * 1000);
+                                curDateTime.setTime(timeMs);
+                            }
+                            break;
+                        case 5: // Time sample
+                            {
+                                let year, month, day, hour, min, sec;
+                                day = parseInt(value[i].toString(16), 10);
+                                month = parseInt(value[i + 1].toString(16), 10) - 1;
+                                year = parseInt(value[i + 2].toString(16), 10) + 2000;
+                                hour = parseInt(value[i + 4].toString(16), 10);
+                                min = parseInt(value[i + 5].toString(16), 10);
+                                sec = parseInt(value[i + 6].toString(16), 10);
+                                if (!timeSet) {
+                                    curDateTime = new Date(year, month, day, hour, min, sec, 0);
+                                    timeSet = true;
+                                }
+                                log(curDateTime);
+                            }
+                            break;
+                        default:
+                            // log('> Error: Invalid sample at ' + i);
+                            break;
+                    }
+                }
+                //#endregion Parse job data.
+
+                //#region Export file dialog.
+                if ((jobData === null) || (jobData.length === 0)) {
+                    throw ('No data to export.')
+                } else {
+                    let element = document.createElement('a');
+                    let exportType = '';
+                    if (selectSettingColumnSeperator.value === ',') {
+                        exportType = 'data:text/csv;charset=utf-8,';
+                    } else {
+                        exportType = 'data:text/plain;charset=utf-8,';
+                    }
+                    element.setAttribute('href', exportType + encodeURIComponent(exportJob(jobData)));
+                    element.setAttribute('download', fileDownloadName.slice(0, -4) + '_' + (new Date()).toLocaleDateString());
+                    element.style.display = 'none';
+                    document.body.appendChild(element);
+                    element.click();
+                    document.body.removeChild(element);
+                }
+                //#endregion Export file dialog.
+
+            } catch (error) {
+                log('> Error: parseExportJob -> ' + error);
+                LogActivity.clearError();
+                LogActivity.setError(error);
+            }
+        }
+
+        function exportJob(value) {
+            let result = '';
+            try {
+                let initTimeMs = value[0].timeMs;
+                result += 'Gauge SN: ' + jobConfigData.gaugeSN + '\r\n';
+                result += 'Start Date Time: ' + (new Date(initTimeMs)).toLocaleString() + '\r\n';
+                result += 'Calibration Date: ' + jobConfigData.calibDate + '\r\n';
+                result += 'Max Cal Pressure: '
+                    + convertPressure(jobConfigData.calibMaxPress, unitPressure(), jobConfigData.calibMinPress).toFixed(0)
+                    + pressureString(unitPressure()).slice(0, -3)
+                    + '\r\n';
+                result += 'Max Cal Temperature: '
+                    + convertTemperature(jobConfigData.calibMaxTemp, unitTemperature()).toFixed(0)
+                    + temperatureString(unitPressure())
+                    + '\r\n';
+                result += '\r\n';
+
+                Object.keys(value[0]).forEach(key => {
+                    switch (key) {
+                        case 'timeMs':
+                            result += 'ElapsedTime';
+                            switch (parseInt(selectSettingElapsedTimeFormat.value)) {
+                                case 1000:
+                                    result += '(Secs)';
+                                    break;
+                                case 3600000:
+                                    result += '(Hours)';
+                                    break;
+                                case 86400000:
+                                    result += '(Days)';
+                                    break;
+                                default:
+                                    result += '(mSecs)';
+                                    break;
+                            }
+                            break;
+                        case 'pressValue':
+                            result += selectSettingColumnSeperator.value + 'Pressure(' + pressureString(unitPressure()).slice(1) + ')';
+                            break;
+                        case 'tempValue':
+                            result += selectSettingColumnSeperator.value + 'Temperature(' + temperatureString(unitTemperature()).slice(1) + ')';
+                            break;
+                        default:
+                            break;
+                    }
+                });
+                result += '\r\n';
+                value.forEach((element, index) => {
+                    let curDateTime = new Date(element.timeMs);
+                    Object.keys(element).forEach(key => {
+                        switch (key) {
+                            case 'timeMs':
+                                result += parseFloat(((element.timeMs - initTimeMs) / parseInt(selectSettingElapsedTimeFormat.value)).toFixed(timeDecimal()));
+                                break;
+                            case 'pressValue':
+                                result += selectSettingColumnSeperator.value + convertPressure(element.pressValue, unitPressure(), jobConfigData.calibMinPress).toFixed(pressureDecimal(unitPressure()));
+                                break;
+                            case 'tempValue':
+                                result += selectSettingColumnSeperator.value + convertTemperature(element.tempValue, unitTemperature()).toFixed(temperatureDecimal(unitTemperature()));
+                                break;
+                            default:
+                                break;
+                        }
+                    });
+                    result += '\r\n';
+                });
+            } catch (error) {
+                log('> Error: exportJob -> ' + error);
+            }
+            return result;
+        }
+
+        function calibratePressure(pressRaw, tempRaw) {
+            let result = 0;
+            try {
+                let final = 0;
+                let mid = 0;
+                let cur_order = 0;
+                let cur_order_count = 0;
+                let press_l = jobConfigData.calibPressScaling * (pressRaw - jobConfigData.calibPressCountOffset);
+                let temp_l = jobConfigData.calibTempScaling * (tempRaw - jobConfigData.calibTempCountOffset);
+                for (let i = 0; i < 15; i++) {
+                    if (jobConfigData.calibPressCoeff[i] === 0) {
+                        break;
+                    }
+                    mid = jobConfigData.calibPressCoeff[i] * Math.pow(press_l, cur_order - cur_order_count);
+                    mid = mid * Math.pow(temp_l, cur_order_count);
+                    cur_order_count++;
+                    if (cur_order_count > cur_order) {
+                        cur_order++;
+                        cur_order_count = 0;
+                    }
+                    final = final + mid;
+                }
+                result = final + jobConfigData.calibPressOffset;
+            } catch { }
+            return result;
+        }
+
+        function calibrateTemperateure(pressRaw, tempRaw) {
+            let result = 0;
+            try {
+                let final = 0;
+                let mid = 0;
+                let cur_order = 0;
+                let cur_order_count = 0;
+                let press_l = jobConfigData.calibPressScaling * (pressRaw - jobConfigData.calibPressCountOffset);
+                let temp_l = jobConfigData.calibTempScaling * (tempRaw - jobConfigData.calibTempCountOffset);
+                for (let i = 0; i < 10; i++) {
+                    if (jobConfigData.calibTempCoeff[i] === 0) {
+                        break;
+                    }
+                    mid = jobConfigData.calibTempCoeff[i] * Math.pow(press_l, cur_order - cur_order_count);
+                    mid = mid * Math.pow(temp_l, cur_order_count);
+                    cur_order_count++;
+                    if (cur_order_count > cur_order) {
+                        cur_order++;
+                        cur_order_count = 0;
+                    }
+                    final = final + mid;
+                }
+                result = final + jobConfigData.calibTempOffset;
+            } catch { }
+            return result;
+        }
+
+        //#endregion Code.
+
+        //#region Other functions.
 
         function sleep(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
@@ -167,7 +667,264 @@
             return x;
         }
 
-        //#endregion Code.
+        function convertPressure(value, unit, atmPressPSI) {
+            let result = 0;
+            try {
+                switch (unit) {
+                    case 1:
+                        result = value * 6.894757;
+                        break;
+                    case 2:
+                        result = value * 0.0680459639;
+                        break;
+                    case 3:
+                        result = value * 0.070307;
+                        break;
+                    case 4:
+                        result = value * 68.9475729;
+                        break;
+                    case 5:
+                        result = value * 0.0689475729;
+                        break;
+                    case 6:
+                        result = value * 51.7149326;
+                        break;
+                    case 7:
+                        result = value * 0.0703069579655392;
+                        break;
+                    case 8:
+                        result = (value - atmPressPSI);
+                        break;
+                    case 9:
+                        result = (value - atmPressPSI) * 6.894757;
+                        break;
+                    case 10:
+                        result = (value - atmPressPSI) * 0.0680459639;
+                        break;
+                    case 11:
+                        result = (value - atmPressPSI) * 0.070307;
+                        break;
+                    case 12:
+                        result = (value - atmPressPSI) * 68.9475729;
+                        break;
+                    case 13:
+                        result = (value - atmPressPSI) * 0.0689475729;
+                        break;
+                    case 14:
+                        result = (value - atmPressPSI) * 51.7149326;
+                        break;
+                    case 15:
+                        result = (value - atmPressPSI) * 0.0703069579655392;
+                        break;
+                    default:
+                        result = value;
+                        break;
+                }
+            } catch (error) {
+                log('> Error: convertPressure -> ' + error);
+            }
+            return result;
+        }
+
+        function convertPSIA(value, unit, atmPressPSI) {
+            let result = 0;
+            try {
+                switch (unit) {
+                    case 1:
+                        result = value / 6.894757;
+                        break;
+                    case 2:
+                        result = value / 0.0680459639;
+                        break;
+                    case 3:
+                        result = value / 0.070307;
+                        break;
+                    case 4:
+                        result = value / 68.9475729;
+                        break;
+                    case 5:
+                        result = value / 0.0689475729;
+                        break;
+                    case 6:
+                        result = value / 51.7149326;
+                        break;
+                    case 7:
+                        result = value / 0.0703069579655392;
+                        break;
+                    case 8:
+                        result = (value + atmPressPSI);
+                        break;
+                    case 9:
+                        result = (value / 6.894757) + atmPressPSI;
+                        break;
+                    case 10:
+                        result = (value / 0.0680459639) + atmPressPSI;
+                        break;
+                    case 11:
+                        result = (value / 0.070307) + atmPressPSI;
+                        break;
+                    case 12:
+                        result = (value / 68.9475729) + atmPressPSI;
+                        break;
+                    case 13:
+                        result = (value / 0.0689475729) + atmPressPSI;
+                        break;
+                    case 14:
+                        result = (value / 51.7149326) + atmPressPSI;
+                        break;
+                    case 15:
+                        result = (value / 0.0703069579655392) + atmPressPSI;
+                        break;
+                    default:
+                        result = value;
+                        break;
+                }
+            } catch (error) {
+                log('> Error: convertPSIA -> ' + error);
+            }
+            return result;
+        }
+
+        function convertTemperature(value, unit) {
+            let result = 0;
+            try {
+                switch (unit) {
+                    case 1:
+                        result = (9 / 5 * value + 32);
+                        break;
+                    case 2:
+                        result = 273.15 + value;
+                        break;
+                    default:
+                        result = value;
+                        break;
+                }
+            } catch (error) {
+                log('> Error: convertTemperature -> ' + error);
+            }
+            return result;
+        }
+
+        function convertDegC(value, unit) {
+            let result = 0;
+            try {
+                switch (unit) {
+                    case 1:
+                        result = (value - 32) / 9 * 5;
+                        break;
+                    case 2:
+                        result = value - 273.15;
+                        break;
+                    default:
+                        result = value;
+                        break;
+                }
+            } catch (error) {
+                log('> Error: convertDegC -> ' + error);
+            }
+            return result;
+        }
+
+        function unitPressure() {
+            return parseInt(selectSettingPressureUnit.value);
+        }
+
+        function unitTemperature() {
+            return parseInt(selectSettingTemperatureUnit.value);
+        }
+
+        function pressureString(unit) {
+            let result = '';
+            try {
+                switch (unit) {
+                    case 1:
+                        result = ' kPa(A)';
+                        break;
+                    case 2:
+                        result = ' atm(A)';
+                        break;
+                    case 3:
+                        result = ' at(A)';
+                        break;
+                    case 4:
+                        result = ' mBar(A)';
+                        break;
+                    case 5:
+                        result = ' bar(A)';
+                        break;
+                    case 6:
+                        result = ' torr(A)';
+                        break;
+                    case 7:
+                        result = ' kg/cm²(A)';
+                        break;
+                    case 8:
+                        result = ' psi(G)';
+                        break;
+                    case 9:
+                        result = ' kPa(G)';
+                        break;
+                    case 10:
+                        result = ' atm(G)';
+                        break;
+                    case 11:
+                        result = ' at(G)';
+                        break;
+                    case 12:
+                        result = ' mBar(G)';
+                        break;
+                    case 13:
+                        result = ' bar(G)';
+                        break;
+                    case 14:
+                        result = ' torr(G)';
+                        break;
+                    case 15:
+                        result = ' kg/cm²(G)';
+                        break;
+                    default:
+                        result = ' psi(A)';
+                        break;
+                }
+            } catch (error) {
+                log('> Error: pressureString -> ' + error);
+            }
+            return result;
+        }
+
+        function temperatureString(unit) {
+            let result = '';
+            try {
+                switch (unit) {
+                    case 1:
+                        result = ' °F';
+                        break;
+                    case 2:
+                        result = ' °K';
+                        break;
+                    default:
+                        result = ' °C';
+                        break;
+                }
+            } catch (error) {
+                log('> Error: temperatureString -> ' + error);
+            }
+            return result;
+        }
+
+        function timeDecimal() {
+            return (selectSettingElapsedTimeFormat.value.length - 1);
+        }
+
+        function pressureDecimal(unit) {
+            return parseInt(textSettingPressureDecimal.value);
+        }
+
+        function temperatureDecimal(unit) {
+            return parseInt(textSettingTemperatureDecimal.value);
+        }
+
+        //#endregion Other functions.
 
     </script>
 
