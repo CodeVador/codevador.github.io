@@ -50,7 +50,7 @@
         <!--Header-->
         <div class="card bg-dark text-white">
             <div class="card-header">
-                FST Decoder v0.0.2
+                FST Decoder v1.0.0
             </div>
         </div>
         <!--Busy-->
@@ -189,7 +189,7 @@
                     <div class="card-body">
                         <div class="input-group mb-3">
                             <input type="file" class="form-control" id="fileOpenJob" aria-describedby=""
-                                aria-label="Upload" accept=".fst, .kc3">
+                                aria-label="Upload" accept=".fst">
                         </div>
                     </div>
                     <div class="card-footer">
@@ -372,7 +372,8 @@
                 downloadData = new Uint8Array(contents);
                 fileDownloadName = jobFile.name;
                 if (downloadData !== null) {
-                    if (fileDownloadName.endsWith('.KC3') || fileDownloadName.endsWith('.FST')) {
+                    if (fileDownloadName.endsWith('.FST')) {
+                        log('Parsing ' + fileDownloadName);
                         parseExportJob(downloadData);
                     }
                 }
@@ -391,7 +392,6 @@
         let jobConfigData = {
             gaugeSN: "",
             selectedHW: "",
-            fixedRate: 30,
             pressTrigStart: 30,
             pressTrigStop: 0,
             createJob: 0,
@@ -411,6 +411,7 @@
             calibTempCountOffset: 0,
             calibPressScaling: 0,
             calibTempScaling: 0,
+            fastRate: 64,
         };
 
         function parseExportJob(value) {
@@ -419,7 +420,6 @@
                 //#region Parse header.
                 jobConfigData.gaugeSN = String.fromCharCode.apply(null, value.slice(38, 41));
                 jobConfigData.selectedHW = String.fromCharCode.apply(null, value.slice(64, 69));
-                jobConfigData.fixedRate = parseInt(String.fromCharCode.apply(null, value.slice(199, 204)));
                 jobConfigData.pressTrigStart = parseInt(String.fromCharCode.apply(null, value.slice(231, 236)));
                 jobConfigData.pressTrigStop = parseInt(String.fromCharCode.apply(null, value.slice(262, 267)));
                 jobConfigData.createJob = parseInt(String.fromCharCode.apply(null, value.slice(282, 283)));
@@ -445,6 +445,7 @@
                 jobConfigData.calibTempCountOffset = parseFloat(String.fromCharCode.apply(null, value.slice(1584, 1597)));
                 jobConfigData.calibPressScaling = parseFloat(String.fromCharCode.apply(null, value.slice(1618, 1631)));
                 jobConfigData.calibTempScaling = parseFloat(String.fromCharCode.apply(null, value.slice(1655, 1668)));
+                jobConfigData.fastRate = (1 / parseFloat(String.fromCharCode.apply(null, value.slice(1691, 1696)))) * 1000;
                 //#endregion Parse header.
 
                 //#region Error checking.
@@ -458,22 +459,21 @@
 
                 //#region Parse job data.
                 let jobData = [];
-                let curDateTime = new Date();
                 let timeSet = false;
+                let sampleTime = (new Date()).getTime();
                 for (let i = (FILE_HEADER_SIZE); i < value.length; i += 8) {
                     switch (value[i + 7] % 16) {
                         case 10: // Normal sample
                         case 11: // RTC invalid sample
                             {
-                                let timeMs = curDateTime.getTime();
+                                let timeMs = sampleTime;
                                 let rawPress = value[i] * 256 * 256 + value[i + 1] * 256 + value[i + 2];
                                 let rawTemp = value[i + 4] * 256 * 256 + value[i + 5] * 256 + value[i + 6];
                                 let pressValue = calibratePressure(rawPress, rawTemp);
                                 let tempValue = calibrateTemperateure(rawPress, rawTemp);
 
                                 jobData.push({ timeMs, pressValue, tempValue });
-                                timeMs += (jobConfigData.fixedRate * 1000);
-                                curDateTime.setTime(timeMs);
+                                sampleTime += jobConfigData.fastRate;
                             }
                             break;
                         case 5: // Time sample
@@ -485,11 +485,16 @@
                                 hour = parseInt(value[i + 4].toString(16), 10);
                                 min = parseInt(value[i + 5].toString(16), 10);
                                 sec = parseInt(value[i + 6].toString(16), 10);
+
+                                let testSampleTime = (new Date(year, month, day, hour, min, sec, 0)).getTime();
                                 if (!timeSet) {
-                                    curDateTime = new Date(year, month, day, hour, min, sec, 0);
+                                    sampleTime = testSampleTime;
                                     timeSet = true;
                                 }
-                                log(curDateTime);
+                                else if((value[i + 3] != 0x0B) || (testSampleTime >= sampleTime)) {
+                                    sampleTime = testSampleTime;
+                                }
+                                log('Job Time:' + new Date(testSampleTime) + '; Sample Time:' + new Date(sampleTime));
                             }
                             break;
                         default:
