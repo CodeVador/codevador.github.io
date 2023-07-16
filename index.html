@@ -50,7 +50,7 @@
         <!--Header-->
         <div class="card bg-dark text-white">
             <div class="card-header">
-                FST Decoder v1.0.0
+                FST Decoder v1.0.1
             </div>
         </div>
         <!--Busy-->
@@ -172,6 +172,16 @@
                                     name="textSettingTemperatureDecimal" min="0" value="2">
                             </div>
                         </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <label class="control-label" for="textSettingSamplesPerASCII">Samples per ASCII:
+                                </label>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" class="form-control fw-bold" id="textSettingSamplesPerASCII"
+                                    name="textSettingSamplesPerASCII" min="1" max="16000000" value="4250000">
+                            </div>
+                        </div>
                     </div>
                     <div class="card-footer">
                         <button type="button" id="btnSaveSettings" class="btn btn-info">Save</button>
@@ -218,6 +228,7 @@
         const selectSettingElapsedTimeFormat = document.querySelector('#selectSettingElapsedTimeFormat');
         let textSettingPressureDecimal = document.querySelector('#textSettingPressureDecimal');
         let textSettingTemperatureDecimal = document.querySelector('#textSettingTemperatureDecimal');
+        let textSettingSamplesPerASCII = document.querySelector('#textSettingSamplesPerASCII');
         let btnSaveSettings = document.querySelector('#btnSaveSettings');
         let btnConvert = document.querySelector('#btnConvert');
 
@@ -264,12 +275,19 @@
             event.stopPropagation();
             event.preventDefault();
 
+            lblProgressText("(Parsing FST job)");
+            divBusyShow(true, true);
+            progressBarPercentage('0%');
+
             await onButtonConvert();
+
+            divBusyShow(false, false);
+
         });
 
         function loadSaveSettingsFromIndexedDB(isSave) {
             try {
-                let openRequest = indexedDB.open("SettingsDB", 1);
+                let openRequest = indexedDB.open("SettingsDB", 2);
 
                 openRequest.onupgradeneeded = function (event) {
                     let db = openRequest.result;
@@ -296,6 +314,7 @@
                         store.put({ id: "ElapsedTimeFormat", value: selectSettingElapsedTimeFormat.value });
                         store.put({ id: "PressureDecimal", value: textSettingPressureDecimal.value });
                         store.put({ id: "TemperatureDecimal", value: textSettingTemperatureDecimal.value });
+                        store.put({ id: "SamplesPerASCII", value: textSettingSamplesPerASCII.value });
                     } else {
                         let getPressureUnit = store.get("PressureUnit");
                         let getTemperatureUnit = store.get("TemperatureUnit");
@@ -303,6 +322,7 @@
                         let getElapsedTimeFormat = store.get("ElapsedTimeFormat");
                         let getPressureDecimal = store.get("PressureDecimal");
                         let getTemperatureDecimal = store.get("TemperatureDecimal");
+                        let getSamplesPerASCII = store.get("SamplesPerASCII");
 
                         getPressureUnit.onsuccess = function () {
                             try {
@@ -346,7 +366,13 @@
                                 textSettingTemperatureDecimal.value = 2;
                             }
                         };
-
+                        getSamplesPerASCII.onsuccess = function () {
+                            try {
+                                textSettingSamplesPerASCII.value = getSamplesPerASCII.result.value;
+                            } catch {
+                                textSettingSamplesPerASCII.value = 4250000;
+                            }
+                        };
                     }
 
                     tx.oncomplete = function () {
@@ -374,7 +400,7 @@
                 if (downloadData !== null) {
                     if (fileDownloadName.endsWith('.FST')) {
                         log('Parsing ' + fileDownloadName);
-                        parseExportJob(downloadData);
+                        await parseExportJob(downloadData);
                     }
                 }
             } catch (error) {
@@ -414,7 +440,7 @@
             fastRate: 64,
         };
 
-        function parseExportJob(value) {
+        async function parseExportJob(value) {
             try {
 
                 //#region Parse header.
@@ -461,6 +487,7 @@
                 let jobData = [];
                 let timeSet = false;
                 let sampleTime = (new Date()).getTime();
+                let progressUpdate = 65536;
                 for (let i = (FILE_HEADER_SIZE); i < value.length; i += 8) {
                     switch (value[i + 7] % 16) {
                         case 10: // Normal sample
@@ -491,15 +518,20 @@
                                     sampleTime = testSampleTime;
                                     timeSet = true;
                                 }
-                                else if((value[i + 3] != 0x0B) || (testSampleTime >= sampleTime)) {
+                                else if ((value[i + 3] != 0x0B) || (testSampleTime >= sampleTime)) {
                                     sampleTime = testSampleTime;
                                 }
-                                log('Job Time:' + new Date(testSampleTime) + '; Sample Time:' + new Date(sampleTime));
+                                // log('Job Time:' + new Date(testSampleTime) + '; Sample Time:' + new Date(sampleTime));
                             }
                             break;
                         default:
                             // log('> Error: Invalid sample at ' + i);
                             break;
+                    }
+                    if ((i % progressUpdate) === 0) {
+                        // log((i / value.length * 100).toFixed(2) + '%');
+                        progressBarPercentage((i / value.length * 100).toFixed(2) + '%');
+                        await sleep(1);
                     }
                 }
                 //#endregion Parse job data.
@@ -510,17 +542,37 @@
                 } else {
                     let element = document.createElement('a');
                     let exportType = '';
+                    let i, j, sample_size, file_count, file_count_label;
                     if (selectSettingColumnSeperator.value === ',') {
                         exportType = 'data:text/csv;charset=utf-8,';
                     } else {
                         exportType = 'data:text/plain;charset=utf-8,';
                     }
-                    element.setAttribute('href', exportType + encodeURIComponent(exportJob(jobData)));
-                    element.setAttribute('download', fileDownloadName.slice(0, -4) + '_' + (new Date()).toLocaleDateString());
-                    element.style.display = 'none';
-                    document.body.appendChild(element);
-                    element.click();
-                    document.body.removeChild(element);
+                    sample_size = parseInt(textSettingSamplesPerASCII.value);
+                    file_count = 0;
+                    for (i = 0; i < jobData.length; i += sample_size) {
+                        if ((jobData.length - i) < sample_size) {
+                            j = jobData.length;
+                        } else {
+                            j = i + sample_size;
+                        }
+                        if (file_count === 0) {
+                            lblProgressText("(Exporting ASCII job)");
+                            file_count_label = '';
+                        } else {
+                            lblProgressText("(Exporting ASCII job -> " + file_count + ")");
+                            file_count_label = '_' + file_count;
+                        }
+                        progressBarPercentage('0%');
+                        element.setAttribute('href', exportType + encodeURIComponent(await exportJob(jobData, i, j)));
+                        element.setAttribute('download', fileDownloadName.slice(0, -4) + '_' + (new Date()).toLocaleDateString() + file_count_label);
+                        element.style.display = 'none';
+                        document.body.appendChild(element);
+                        element.click();
+                        document.body.removeChild(element);
+                        file_count++;
+                    }
+                    jobData = [];
                 }
                 //#endregion Export file dialog.
 
@@ -531,10 +583,11 @@
             }
         }
 
-        function exportJob(value) {
+        async function exportJob(value, offsetBegin, offsetEnd) {
             let result = '';
             try {
-                let initTimeMs = value[0].timeMs;
+                let i;
+                let initTimeMs = value[offsetBegin].timeMs;
                 result += 'Gauge SN: ' + jobConfigData.gaugeSN + '\r\n';
                 result += 'Start Date Time: ' + (new Date(initTimeMs)).toLocaleString() + '\r\n';
                 result += 'Calibration Date: ' + jobConfigData.calibDate + '\r\n';
@@ -548,7 +601,7 @@
                     + '\r\n';
                 result += '\r\n';
 
-                Object.keys(value[0]).forEach(key => {
+                Object.keys(value[offsetBegin]).forEach(key => {
                     switch (key) {
                         case 'timeMs':
                             result += 'ElapsedTime';
@@ -578,7 +631,9 @@
                     }
                 });
                 result += '\r\n';
-                value.forEach((element, index) => {
+                let progressUpdate = ((offsetEnd - offsetBegin) / 100).toFixed(0);
+                for (i = offsetBegin; i < offsetEnd; i++) {
+                    let element = value[i];
                     let curDateTime = new Date(element.timeMs);
                     Object.keys(element).forEach(key => {
                         switch (key) {
@@ -596,7 +651,12 @@
                         }
                     });
                     result += '\r\n';
-                });
+                    if ((i % progressUpdate) === 0) {
+                        // log(((i - offsetBegin) / (offsetEnd - offsetBegin) * 100).toFixed(2) + '%');
+                        progressBarPercentage(((i - offsetBegin) / (offsetEnd - offsetBegin) * 100).toFixed(0) + '%');
+                        await sleep(1);
+                    }
+                }
             } catch (error) {
                 log('> Error: exportJob -> ' + error);
             }
