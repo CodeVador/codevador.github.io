@@ -1,4 +1,4 @@
-const cacheName = 'SW-v1.0.2';
+const cacheName = 'SW-v1.0.3';
 
 const cacheAssets = [
     './',

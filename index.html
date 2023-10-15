@@ -50,7 +50,7 @@
         <!--Header-->
         <div class="card bg-dark text-white">
             <div class="card-header">
-                FST/KC3 Decoder v1.0.2
+                FST/KC3 Decoder v1.0.3
             </div>
         </div>
         <!--Busy-->
@@ -182,6 +182,34 @@
                                     name="textSettingSamplesPerASCII" min="1" max="16000000" value="4250000">
                             </div>
                         </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <label class="control-label" for="selectSettingKC3DateFormat">KC3 Date Format:
+                                </label>
+                            </div>
+                            <div class="col-md-3">
+                                <select name="selectSettingKC3DateFormat" id="selectSettingKC3DateFormat"
+                                    class="form-select fw-bold">
+                                    <option selected value="0">Disabled</option>
+                                    <option value="1">MM/DD/YYYY</option>
+                                    <option value="2">DD/MM/YYYY</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <label class="control-label" for="selectSettingKC3TimeFormat">KC3 Time Format:
+                                </label>
+                            </div>
+                            <div class="col-md-3">
+                                <select name="selectSettingKC3TimeFormat" id="selectSettingKC3TimeFormat"
+                                    class="form-select fw-bold">
+                                    <option selected value="0">Disabled</option>
+                                    <option value="1">HH:MM:SS</option>
+                                    <option value="2">HH:MM:SS AM/PM</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                     <div class="card-footer">
                         <button type="button" id="btnSaveSettings" class="btn btn-info">Save</button>
@@ -229,6 +257,8 @@
         let textSettingPressureDecimal = document.querySelector('#textSettingPressureDecimal');
         let textSettingTemperatureDecimal = document.querySelector('#textSettingTemperatureDecimal');
         let textSettingSamplesPerASCII = document.querySelector('#textSettingSamplesPerASCII');
+        const selectSettingKC3DateFormat = document.querySelector('#selectSettingKC3DateFormat');
+        const selectSettingKC3TimeFormat = document.querySelector('#selectSettingKC3TimeFormat');
         let btnSaveSettings = document.querySelector('#btnSaveSettings');
         let btnConvert = document.querySelector('#btnConvert');
 
@@ -287,7 +317,7 @@
 
         function loadSaveSettingsFromIndexedDB(isSave) {
             try {
-                let openRequest = indexedDB.open("SettingsDB", 2);
+                let openRequest = indexedDB.open("SettingsDB", 3);
 
                 openRequest.onupgradeneeded = function (event) {
                     let db = openRequest.result;
@@ -315,6 +345,8 @@
                         store.put({ id: "PressureDecimal", value: textSettingPressureDecimal.value });
                         store.put({ id: "TemperatureDecimal", value: textSettingTemperatureDecimal.value });
                         store.put({ id: "SamplesPerASCII", value: textSettingSamplesPerASCII.value });
+                        store.put({ id: "KC3DateFormat", value: selectSettingKC3DateFormat.value });
+                        store.put({ id: "KC3TimeFormat", value: selectSettingKC3TimeFormat.value });
                     } else {
                         let getPressureUnit = store.get("PressureUnit");
                         let getTemperatureUnit = store.get("TemperatureUnit");
@@ -323,6 +355,8 @@
                         let getPressureDecimal = store.get("PressureDecimal");
                         let getTemperatureDecimal = store.get("TemperatureDecimal");
                         let getSamplesPerASCII = store.get("SamplesPerASCII");
+                        let getKC3DateFormat = store.get("KC3DateFormat");
+                        let getKC3TimeFormat = store.get("KC3TimeFormat");
 
                         getPressureUnit.onsuccess = function () {
                             try {
@@ -371,6 +405,20 @@
                                 textSettingSamplesPerASCII.value = getSamplesPerASCII.result.value;
                             } catch {
                                 textSettingSamplesPerASCII.value = 4250000;
+                            }
+                        };
+                        getKC3DateFormat.onsuccess = function () {
+                            try {
+                                selectSettingKC3DateFormat.value = getKC3DateFormat.result.value;
+                            } catch {
+                                selectSettingKC3DateFormat.value = 0;
+                            }
+                        };
+                        getKC3TimeFormat.onsuccess = function () {
+                            try {
+                                selectSettingKC3TimeFormat.value = getKC3TimeFormat.result.value;
+                            } catch {
+                                selectSettingKC3TimeFormat.value = 0;
                             }
                         };
                     }
@@ -513,7 +561,7 @@
                                             varCount = 9 - j;
                                         }
                                     }
-                                    if((varCount === 10) || (l === 1)) {
+                                    if ((varCount === 10) || (l === 1)) {
                                         sampleTime += (jobConfigData.fixedRate * 1000);
                                     } else {
                                         sampleTime += (jobConfigData.varRate[varCount] * 1000);
@@ -625,6 +673,14 @@
                 Object.keys(value[offsetBegin]).forEach(key => {
                     switch (key) {
                         case 'timeMs':
+                            if (fileIsKC3) {
+                                if (parseInt(selectSettingKC3DateFormat.value) > 0) {
+                                    result += 'Date' + selectSettingColumnSeperator.value;
+                                }
+                                if (parseInt(selectSettingKC3TimeFormat.value) > 0) {
+                                    result += 'Time' + selectSettingColumnSeperator.value;
+                                }
+                            }
                             result += 'ElapsedTime';
                             switch (parseInt(selectSettingElapsedTimeFormat.value)) {
                                 case 1000:
@@ -659,6 +715,14 @@
                     Object.keys(element).forEach(key => {
                         switch (key) {
                             case 'timeMs':
+                                if (fileIsKC3) {
+                                    if (parseInt(selectSettingKC3DateFormat.value) > 0) {
+                                        result += convertDate(new Date(element.timeMs)) + selectSettingColumnSeperator.value;
+                                    }
+                                    if (parseInt(selectSettingKC3TimeFormat.value) > 0) {
+                                        result += convertTime(new Date(element.timeMs)) + selectSettingColumnSeperator.value;
+                                    }
+                                }
                                 result += parseFloat(((element.timeMs - initTimeMs) / parseInt(selectSettingElapsedTimeFormat.value)).toFixed(timeDecimal()));
                                 break;
                             case 'pressValue':
@@ -741,6 +805,7 @@
         //#endregion Code.
 
         //#region Other functions.
+        const zeroPad = (num, places) => String(num).padStart(places, '0');
 
         function sleep(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
@@ -1008,6 +1073,69 @@
 
         function temperatureDecimal(unit) {
             return parseInt(textSettingTemperatureDecimal.value);
+        }
+
+        function convertDate(date) {
+            let result = '';
+
+            try {
+                switch (parseInt(selectSettingKC3DateFormat.value)) {
+                    case 1:
+                        {
+                            result = `${zeroPad(date.getMonth() + 1, 2)}/${zeroPad(date.getDate(), 2)}/${zeroPad(date.getFullYear(), 4)}`;
+                        }
+                        break;
+                    case 2:
+                        {
+                            result = `${zeroPad(date.getDate(), 2)}/${zeroPad(date.getMonth() + 1, 2)}/${zeroPad(date.getFullYear(), 4)}`;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+            catch { }
+
+            return result;
+        }
+
+        function convertTime(date) {
+            let result = '';
+
+            try {
+                switch (parseInt(selectSettingKC3TimeFormat.value)) {
+                    case 1:
+                        {
+                            result = `${zeroPad(date.getHours(), 2)}:${zeroPad(date.getMinutes(), 2)}:${zeroPad(date.getSeconds(), 2)}`;
+                        }
+                        break;
+                    case 2:
+                        {
+                            if (date.getHours() > 11) {
+                                if (date.getHours() === 12) {
+                                    result = `${zeroPad(date.getHours(), 2)}:${zeroPad(date.getMinutes(), 2)}:${zeroPad(date.getSeconds(), 2)} PM`;
+                                }
+                                else {
+                                    result = `${zeroPad(date.getHours() - 12, 2)}:${zeroPad(date.getMinutes(), 2)}:${zeroPad(date.getSeconds(), 2)} PM`;
+                                }
+                            }
+                            else {
+                                if (date.getHours() === 0) {
+                                    result = `12:${zeroPad(date.getMinutes(), 2)}:${zeroPad(date.getSeconds(), 2)} AM`;
+                                }
+                                else {
+                                    result = `${zeroPad(date.getHours(), 2)}:${zeroPad(date.getMinutes(), 2)}:${zeroPad(date.getSeconds(), 2)} AM`;
+                                }
+                            }
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+            catch { }
+
+            return result;
         }
 
         //#endregion Other functions.
